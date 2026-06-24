@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile representation",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "Display name of the user" },
+        "photoURL": { "type": "string", "description": "Avatar URL of the user" },
+        "createdAt": { "type": "string", "description": "ISO timestamp when profile was created" }
+      },
+      "required": ["uid", "email"]
+    },
+    "AnalysisLog": {
+      "title": "AnalysisLog",
+      "description": "Historical code analysis results containing details from Bug Hunter, Complexity, and Doc Generator agents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier of the log" },
+        "timestamp": { "type": "string", "description": "ISO 8601 timestamp" },
+        "fileName": { "type": "string", "description": "Name of the file analysed" },
+        "language": { "type": "string", "description": "Programming language of the code" },
+        "code": { "type": "string", "description": "The original source code that was analysed" },
+        "bugHunter": { "type": "object", "description": "Bug Hunter Agent analysis details" },
+        "complexity": { "type": "object", "description": "Complexity Optimizer Agent analysis details" },
+        "doc": { "type": "object", "description": "Documentation Generator Agent analysis details" }
+      },
+      "required": ["id", "timestamp", "fileName", "language", "code"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Private profile document for each user"
+    },
+    "/users/{userId}/analysis_logs/{logId}": {
+      "schema": "AnalysisLog",
+      "description": "Historical code analysis logs owned by a specific user"
+    }
+  }
+}

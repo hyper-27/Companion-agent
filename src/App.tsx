@@ -67,6 +67,15 @@ function calculateFactorial(n) {
   const [activeTab, setActiveTab] = useState<"bugs" | "performance" | "docs">("bugs");
   const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
   const [dragActive, setDragActive] = useState<boolean>(false);
+  const [inputMode, setInputMode] = useState<"upload" | "paste">("upload");
+  const [uploadedFile, setUploadedFile] = useState<{
+    name: string;
+    size: string;
+    lines: number;
+    extension: string;
+    content: string;
+  } | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   // Sequential loading states
   // "idle" | "bugHunter" | "complexity" | "doc" | "failed"
@@ -302,27 +311,41 @@ function calculateFactorial(n) {
   };
 
   const processUploadedFile = (file: File) => {
-    const ext = file.name.split(".").pop()?.toLowerCase();
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
     let detectedLang = "plaintext";
 
-    if (["js", "jsx"].includes(ext || "")) detectedLang = "javascript";
-    else if (["ts", "tsx"].includes(ext || "")) detectedLang = "typescript";
-    else if (["py"].includes(ext || "")) detectedLang = "python";
-    else if (["go"].includes(ext || "")) detectedLang = "go";
-    else if (["java"].includes(ext || "")) detectedLang = "java";
-    else if (["cpp", "cc", "cxx", "h"].includes(ext || "")) detectedLang = "cpp";
-    else if (["rs"].includes(ext || "")) detectedLang = "rust";
-    else if (["html"].includes(ext || "")) detectedLang = "html";
-    else if (["css"].includes(ext || "")) detectedLang = "css";
+    if (["js", "jsx"].includes(ext)) detectedLang = "javascript";
+    else if (["ts", "tsx"].includes(ext)) detectedLang = "typescript";
+    else if (["py"].includes(ext)) detectedLang = "python";
+    else if (["go"].includes(ext)) detectedLang = "go";
+    else if (["java"].includes(ext)) detectedLang = "java";
+    else if (["cpp", "cc", "cxx", "h"].includes(ext)) detectedLang = "cpp";
+    else if (["rs"].includes(ext)) detectedLang = "rust";
+    else if (["html"].includes(ext)) detectedLang = "html";
+    else if (["css"].includes(ext)) detectedLang = "css";
 
     setFileName(file.name);
     setLanguage(detectedLang);
+    setFileError(null);
 
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result && typeof event.target.result === "string") {
-        setCode(event.target.result);
+        const content = event.target.result;
+        setCode(content);
+        const linesCount = content.split("\n").length;
+        const sizeStr = (file.size / 1024).toFixed(1) + " KB";
+        setUploadedFile({
+          name: file.name,
+          size: sizeStr,
+          lines: linesCount,
+          extension: ext,
+          content: content
+        });
       }
+    };
+    reader.onerror = () => {
+      setFileError("Error reading file.");
     };
     reader.readAsText(file);
   };
@@ -379,6 +402,12 @@ function calculateFactorial(n) {
     setActiveLog(null);
     setErrorMessage(null);
     setLoadingState("idle");
+    setUploadedFile(null);
+    setFileError(null);
+    setCode("");
+    setFileName("");
+    setLanguage("plaintext");
+    setInputMode("upload");
   };
 
   // Delete saved log
@@ -529,17 +558,36 @@ export default function InfiniteUsers() {
         } flex-shrink-0 border-[#2d2d2d] bg-[#1e1e1e] flex flex-col transition-all duration-300 overflow-hidden relative`}
       >
         {/* Sidebar Header */}
-        <div className="px-4 py-3 border-b border-[#2d2d2d] flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#858585]">
-            Analysis History
-          </span>
-          <button 
-            onClick={handleNewAnalysis}
-            className="p-1 hover:bg-[#2a2d2e] rounded text-gray-400 hover:text-white transition-colors"
-            title="Create new workspace"
-          >
-            <Plus size={14} />
-          </button>
+        <div 
+          id="sidebar-header" 
+          className="px-4 py-3 border-b border-[#2d2d2d] flex items-center justify-between bg-gradient-to-r from-[#1c1c1e] to-[#151516] hover:from-[#212124] hover:to-[#18181a] transition-all duration-300 group"
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300 font-mono group-hover:text-blue-400 transition-colors">
+              Analysis History
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                handleNewAnalysis();
+                setInputMode("upload");
+                setTimeout(() => fileInputRef.current?.click(), 100);
+              }}
+              className="p-1 hover:bg-[#2a2d2e] rounded text-gray-400 hover:text-blue-400 transition-colors"
+              title="Upload file (.py/.java) to analyze"
+            >
+              <Upload size={13} />
+            </button>
+            <button 
+              onClick={handleNewAnalysis}
+              className="p-1 hover:bg-[#2a2d2e] rounded text-gray-400 hover:text-white transition-colors"
+              title="Create new workspace"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Sync/Auth Info Banner inside sidebar */}
@@ -774,122 +822,366 @@ export default function InfiniteUsers() {
                     <div className="bg-[#1e1e1e] border border-[#2d2d2d] rounded p-5 shadow-2xl relative">
                       <div className="absolute top-0 left-0 w-full h-[2px] bg-blue-500"></div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="block text-[11px] font-bold text-[#858585] mb-1 font-mono uppercase tracking-wider">File Name</label>
-                          <input
-                            type="text"
-                            placeholder="factorial.js"
-                            value={fileName}
-                            onChange={(e) => setFileName(e.target.value)}
-                            className="w-full bg-[#151515] border border-[#2d2d2d] rounded py-1.5 px-3 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-bold text-[#858585] mb-1 font-mono uppercase tracking-wider">Language Syntax</label>
-                          <div className="relative">
-                            <select
-                              value={language}
-                              onChange={(e) => setLanguage(e.target.value)}
-                              className="w-full appearance-none bg-[#151515] border border-[#2d2d2d] rounded py-1.5 px-3 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
-                            >
-                              <option value="javascript">JavaScript</option>
-                              <option value="typescript">TypeScript</option>
-                              <option value="python">Python</option>
-                              <option value="go">Go</option>
-                              <option value="java">Java</option>
-                              <option value="cpp">C++</option>
-                              <option value="rust">Rust</option>
-                              <option value="html">HTML</option>
-                              <option value="css">CSS</option>
-                              <option value="plaintext">Plain Text</option>
-                            </select>
-                            <ChevronDown size={14} className="absolute right-3 top-2 text-[#858585] pointer-events-none" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Snippet Header presets */}
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[11px] font-bold text-[#858585] font-mono uppercase tracking-wider">Source Code Snippet</span>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => loadPreset("python")}
-                            className="text-[9px] bg-[#151515] hover:bg-[#2d2d2d] border border-[#2d2d2d] px-2 py-1 rounded text-[#cccccc] font-mono transition-colors"
-                          >
-                            Python Bottleneck
-                          </button>
-                          <button 
-                            onClick={() => loadPreset("react")}
-                            className="text-[9px] bg-[#151515] hover:bg-[#2d2d2d] border border-[#2d2d2d] px-2 py-1 rounded text-[#cccccc] font-mono transition-colors"
-                          >
-                            React Infinite Loop
-                          </button>
-                          <button 
-                            onClick={() => loadPreset("rust")}
-                            className="text-[9px] bg-[#151515] hover:bg-[#2d2d2d] border border-[#2d2d2d] px-2 py-1 rounded text-[#cccccc] font-mono transition-colors"
-                          >
-                            Rust Max Utility
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Code container area simulating editor */}
-                      <div className="border border-[#2d2d2d] rounded bg-[#121212] overflow-hidden flex font-mono text-[13px] relative mb-4">
-                        <div className="bg-[#181818] select-none text-right pr-3 pl-2 py-3 border-r border-[#2d2d2d] text-[#606060] text-[12px] leading-[20px] font-mono">
-                          {Array.from({ length: Math.max(12, code.split("\n").length) }).map((_, i) => (
-                            <div key={i}>{i + 1}</div>
-                          ))}
-                        </div>
-                        <textarea
-                          value={code}
-                          onChange={(e) => setCode(e.target.value)}
-                          spellCheck={false}
-                          className="flex-1 bg-[#121212] p-3 text-white placeholder-gray-700 focus:outline-none resize-none min-h-[260px] max-h-[400px] leading-[20px] overflow-y-auto"
-                        />
-                      </div>
-
-                      {/* Drag Drop section */}
-                      <div
-                        onDragEnter={handleDrag}
-                        onDragOver={handleDrag}
-                        onDragLeave={handleDrag}
-                        onDrop={handleDrop}
-                        onClick={() => fileInputRef.current?.click()}
-                        className={`border border-dashed rounded p-4 text-center cursor-pointer transition-all ${
-                          dragActive
-                            ? "border-blue-500 bg-blue-500/5"
-                            : "border-[#3d3d3d] hover:border-[#5a5a5a] bg-[#151515]"
-                        }`}
-                      >
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          onChange={handleFileChange}
-                          className="hidden"
-                          accept=".js,.jsx,.ts,.tsx,.py,.go,.java,.cpp,.cc,.rs,.html,.css,.txt"
-                        />
-                        <Upload className="mx-auto mb-1 text-gray-500" size={20} />
-                        <p className="text-xs text-gray-300">
-                          Drag & drop source code, or <span className="text-blue-400 underline">browse computer</span>
-                        </p>
-                      </div>
-
-                      {/* Trigger Multi-Agent Pipeline */}
-                      <div className="mt-5 flex justify-end">
+                      {/* Unified Tab Switcher */}
+                      <div className="flex border-b border-[#2d2d2d] mb-5">
                         <button
-                          onClick={runAnalysis}
-                          disabled={!code.trim()}
-                          className={`flex items-center gap-1.5 py-2 px-5 rounded text-xs font-semibold tracking-wide transition-all ${
-                            code.trim()
-                              ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
-                              : "bg-gray-800 text-gray-500 cursor-not-allowed border border-transparent"
+                          type="button"
+                          onClick={() => setInputMode("upload")}
+                          className={`px-4 py-2.5 text-xs font-bold tracking-wider transition-all duration-200 border-b-2 flex items-center gap-2 ${
+                            inputMode === "upload"
+                              ? "border-blue-500 text-blue-400 bg-blue-500/5"
+                              : "border-transparent text-[#858585] hover:text-gray-300"
                           }`}
                         >
-                          <Play size={12} fill="currentColor" />
-                          <span>Run Sequential Pipeline</span>
+                          <Upload size={13} />
+                          <span>Local File Uploader</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setInputMode("paste")}
+                          className={`px-4 py-2.5 text-xs font-bold tracking-wider transition-all duration-200 border-b-2 flex items-center gap-2 ${
+                            inputMode === "paste"
+                              ? "border-blue-500 text-blue-400 bg-blue-500/5"
+                              : "border-transparent text-[#858585] hover:text-gray-300"
+                          }`}
+                        >
+                          <FileText size={13} />
+                          <span>Manual Code Editor</span>
                         </button>
                       </div>
+
+                      {inputMode === "upload" ? (
+                        uploadedFile ? (
+                          <div className="space-y-4">
+                            {/* Loaded File Metadata Card */}
+                            <div className="bg-[#131314] border border-[#2d2d30] rounded p-4 flex items-center justify-between shadow-inner">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded flex items-center justify-center text-[10px] font-extrabold font-mono uppercase tracking-wide border ${
+                                  uploadedFile.extension === "py"
+                                    ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                                    : uploadedFile.extension === "java"
+                                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                    : "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                                }`}>
+                                  .{uploadedFile.extension}
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-gray-200 font-mono flex items-center gap-1.5">
+                                    <span>{uploadedFile.name}</span>
+                                    {["py", "java"].includes(uploadedFile.extension) && (
+                                      <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold border font-sans ${
+                                        uploadedFile.extension === "py"
+                                          ? "bg-blue-500/10 text-blue-300 border-blue-500/25"
+                                          : "bg-amber-500/10 text-amber-300 border-amber-500/25"
+                                      }`}>
+                                        {uploadedFile.extension === "py" ? "Python script" : "Java file"}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-1.5 text-[10px] text-[#858585] font-mono">
+                                    <span className="flex items-center gap-0.5">
+                                      <FileText size={10} />
+                                      {uploadedFile.lines} lines
+                                    </span>
+                                    <span>•</span>
+                                    <span>{uploadedFile.size}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setInputMode("paste")}
+                                  className="px-2.5 py-1.5 bg-[#1e1e20] hover:bg-[#2a2d2e] border border-[#2d2d30] rounded text-[11px] font-bold text-gray-300 transition-colors flex items-center gap-1"
+                                  title="Edit loaded source text"
+                                >
+                                  <FileCode size={12} className="text-blue-400" />
+                                  <span>Edit Code</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUploadedFile(null);
+                                    setCode("");
+                                    setFileName("");
+                                  }}
+                                  className="p-1.5 hover:bg-red-500/10 text-[#858585] hover:text-red-400 rounded border border-transparent hover:border-red-500/20 transition-all"
+                                  title="Remove file"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Elegant Code Preview Viewport */}
+                            <div className="border border-[#2d2d30] rounded bg-[#0a0a0c] overflow-hidden flex font-mono text-[12px] relative shadow-md">
+                              <div className="bg-[#111112] select-none text-right pr-2.5 pl-1.5 py-2.5 border-r border-[#222225] text-[#505052] leading-[18px] font-mono text-[11px]">
+                                {Array.from({ length: Math.min(10, uploadedFile.lines) }).map((_, i) => (
+                                  <div key={i}>{i + 1}</div>
+                                ))}
+                              </div>
+                              <div className="flex-1 p-2.5 text-gray-300 overflow-x-auto overflow-y-auto max-h-[220px] leading-[18px] whitespace-pre font-mono scrollbar-thin scrollbar-thumb-zinc-800">
+                                {uploadedFile.content.split("\n").slice(0, 10).join("\n")}
+                                {uploadedFile.lines > 10 && (
+                                  <div className="text-gray-500 italic text-[10px] mt-1.5 border-t border-[#222225] pt-2 flex items-center gap-1 font-sans">
+                                    <Info size={11} className="text-blue-400" />
+                                    <span>Showing first 10 of {uploadedFile.lines} lines. Choose 'Edit Code' tab to adjust the code block.</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Bottom pipeline action buttons */}
+                            <div className="mt-5 flex justify-end gap-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUploadedFile(null);
+                                  setCode("");
+                                  setFileName("");
+                                }}
+                                className="px-4 py-2 bg-[#1a1a1c] hover:bg-[#222225] border border-[#2d2d30] rounded text-xs font-semibold text-gray-400 hover:text-gray-200 transition-colors"
+                              >
+                                Clear File
+                              </button>
+                              <button
+                                type="button"
+                                onClick={runAnalysis}
+                                disabled={!code.trim()}
+                                className={`flex items-center gap-1.5 py-2 px-5 rounded text-xs font-semibold tracking-wide transition-all shadow-md ${
+                                  code.trim()
+                                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-blue-500/10"
+                                    : "bg-gray-800 text-gray-500 cursor-not-allowed border border-transparent"
+                                }`}
+                              >
+                                <Play size={12} fill="currentColor" />
+                                <span>Analyze File Now</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-5">
+                            {/* Featured language quick upload selectors */}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div 
+                                onClick={() => {
+                                  // Quick load sample Python file
+                                  const pyCode = `def process_user_records(user_ids, db_connection):\n    # Unsafe raw string SQL evaluation\n    for uid in user_ids:\n        query = f"SELECT * FROM accounts WHERE id = '{uid}'"\n        cursor = db_connection.cursor()\n        cursor.execute(query)\n        records = cursor.fetchall()\n        \n        # Performance bottleneck: O(N^2) inner multiplication loop\n        summary = []\n        for r in records:\n            for other in records:\n                score = sum([i for i in range(500)])\n                summary.append({"user": r[1], "score": score})\n    return summary`;
+                                  setCode(pyCode);
+                                  setFileName("user_analyzer.py");
+                                  setLanguage("python");
+                                  setUploadedFile({
+                                    name: "user_analyzer.py",
+                                    size: "0.6 KB",
+                                    lines: 14,
+                                    extension: "py",
+                                    content: pyCode
+                                  });
+                                }}
+                                className="border border-blue-500/10 bg-blue-500/5 hover:bg-blue-500/10 hover:border-blue-500/35 rounded-lg p-4 text-center cursor-pointer transition-all duration-300 group relative overflow-hidden"
+                              >
+                                <div className="absolute top-1.5 right-2 text-[8px] font-bold font-mono bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                  Python
+                                </div>
+                                <Flame size={22} className="mx-auto mb-2 text-blue-400 group-hover:scale-110 transition-transform" />
+                                <h4 className="text-xs font-bold text-gray-200">Load Python Sample (.py)</h4>
+                                <p className="text-[10px] text-[#858585] mt-1.5">Load dynamic Python O(N²) loop & raw SQL injection snippet</p>
+                              </div>
+
+                              <div 
+                                onClick={() => {
+                                  // Quick load sample Java file
+                                  const javaCode = `public class DatabaseConnector {\n    // Vulnerability: Hardcoded database authentication secret\n    private static final String DB_PASS = "Prod_Root_Secr3t_99!";\n\n    public void fetchTransactionHistory(String txCategory, java.sql.Connection conn) throws Exception {\n        java.sql.Statement statement = conn.createStatement();\n        // Unsafe dynamic statement execution\n        String rawQuery = "SELECT * FROM ledger WHERE category = '" + txCategory + "'";\n        java.sql.ResultSet results = statement.executeQuery(rawQuery);\n        \n        // Performance: Iterative string concatenation inside loop\n        String logText = "Logs:\\n";\n        while (results.next()) {\n            logText += "Transaction ID: " + results.getString("id") + " status: OK\\n";\n        }\n    }\n}`;
+                                  setCode(javaCode);
+                                  setFileName("DatabaseConnector.java");
+                                  setLanguage("java");
+                                  setUploadedFile({
+                                    name: "DatabaseConnector.java",
+                                    size: "0.8 KB",
+                                    lines: 15,
+                                    extension: "java",
+                                    content: javaCode
+                                  });
+                                }}
+                                className="border border-amber-500/10 bg-amber-500/5 hover:bg-amber-500/10 hover:border-amber-500/35 rounded-lg p-4 text-center cursor-pointer transition-all duration-300 group relative overflow-hidden"
+                              >
+                                <div className="absolute top-1.5 right-2 text-[8px] font-bold font-mono bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                  Java
+                                </div>
+                                <Cpu size={22} className="mx-auto mb-2 text-amber-400 group-hover:scale-110 transition-transform" />
+                                <h4 className="text-xs font-bold text-gray-200">Load Java Sample (.java)</h4>
+                                <p className="text-[10px] text-[#858585] mt-1.5">Load Java hardcoded credentials & dynamic string concat class</p>
+                              </div>
+                            </div>
+
+                            {/* Drop Zone Box */}
+                            <div
+                              onDragEnter={handleDrag}
+                              onDragOver={handleDrag}
+                              onDragLeave={handleDrag}
+                              onDrop={handleDrop}
+                              onClick={() => fileInputRef.current?.click()}
+                              className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center ${
+                                dragActive
+                                  ? "border-blue-500 bg-blue-500/10 scale-[1.01] shadow-lg shadow-blue-500/5"
+                                  : "border-[#2d2d30] hover:border-[#444448] bg-[#121213]"
+                              }`}
+                            >
+                              <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                className="hidden"
+                                accept=".py,.java,.js,.jsx,.ts,.tsx,.go,.cpp,.cc,.rs"
+                              />
+                              <div className="w-12 h-12 rounded-full bg-[#1c1c1e] flex items-center justify-center mb-3 border border-[#2c2c2e]">
+                                <Upload className="text-blue-400 animate-bounce" size={20} />
+                              </div>
+                              <h3 className="text-xs font-bold text-gray-200">Drag & Drop Your Code File Here</h3>
+                              <p className="text-[11px] text-[#858585] mt-1.5 max-w-sm leading-relaxed">
+                                Specifically designed to analyze local <span className="text-blue-400 font-semibold">.py</span> (Python) and <span className="text-amber-400 font-semibold">.java</span> (Java) script configurations.
+                              </p>
+                              <button
+                                type="button"
+                                className="mt-4 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded transition-colors"
+                              >
+                                Browse Files
+                              </button>
+                            </div>
+
+                            {fileError && (
+                              <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded text-xs flex items-center gap-2">
+                                <AlertTriangle size={14} />
+                                <span>{fileError}</span>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      ) : (
+                        <div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <label className="block text-[11px] font-bold text-[#858585] mb-1 font-mono uppercase tracking-wider">File Name</label>
+                              <input
+                                type="text"
+                                placeholder="factorial.js"
+                                value={fileName}
+                                onChange={(e) => setFileName(e.target.value)}
+                                className="w-full bg-[#151515] border border-[#2d2d2d] rounded py-1.5 px-3 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-[#858585] mb-1 font-mono uppercase tracking-wider">Language Syntax</label>
+                              <div className="relative">
+                                <select
+                                  value={language}
+                                  onChange={(e) => setLanguage(e.target.value)}
+                                  className="w-full appearance-none bg-[#151515] border border-[#2d2d2d] rounded py-1.5 px-3 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                                >
+                                  <option value="javascript">JavaScript</option>
+                                  <option value="typescript">TypeScript</option>
+                                  <option value="python">Python</option>
+                                  <option value="go">Go</option>
+                                  <option value="java">Java</option>
+                                  <option value="cpp">C++</option>
+                                  <option value="rust">Rust</option>
+                                  <option value="html">HTML</option>
+                                  <option value="css">CSS</option>
+                                  <option value="plaintext">Plain Text</option>
+                                </select>
+                                <ChevronDown size={14} className="absolute right-3 top-2 text-[#858585] pointer-events-none" />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Snippet Header presets */}
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-bold text-[#858585] font-mono uppercase tracking-wider">Source Code Snippet</span>
+                            <div className="flex gap-2">
+                              <button 
+                                type="button"
+                                onClick={() => loadPreset("python")}
+                                className="text-[9px] bg-[#151515] hover:bg-[#2d2d2d] border border-[#2d2d2d] px-2 py-1 rounded text-[#cccccc] font-mono transition-colors"
+                              >
+                                Python Bottleneck
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => loadPreset("react")}
+                                className="text-[9px] bg-[#151515] hover:bg-[#2d2d2d] border border-[#2d2d2d] px-2 py-1 rounded text-[#cccccc] font-mono transition-colors"
+                              >
+                                React Infinite Loop
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => loadPreset("rust")}
+                                className="text-[9px] bg-[#151515] hover:bg-[#2d2d2d] border border-[#2d2d2d] px-2 py-1 rounded text-[#cccccc] font-mono transition-colors"
+                              >
+                                Rust Max Utility
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Code container area simulating editor */}
+                          <div className="border border-[#2d2d2d] rounded bg-[#121212] overflow-hidden flex font-mono text-[13px] relative mb-4">
+                            <div className="bg-[#181818] select-none text-right pr-3 pl-2 py-3 border-r border-[#2d2d2d] text-[#606060] text-[12px] leading-[20px] font-mono">
+                              {Array.from({ length: Math.max(12, code.split("\n").length) }).map((_, i) => (
+                                <div key={i}>{i + 1}</div>
+                              ))}
+                            </div>
+                            <textarea
+                              value={code}
+                              onChange={(e) => setCode(e.target.value)}
+                              spellCheck={false}
+                              className="flex-1 bg-[#121212] p-3 text-white placeholder-gray-700 focus:outline-none resize-none min-h-[260px] max-h-[400px] leading-[20px] overflow-y-auto"
+                            />
+                          </div>
+
+                          {/* Drag Drop section */}
+                          <div
+                            onDragEnter={handleDrag}
+                            onDragOver={handleDrag}
+                            onDragLeave={handleDrag}
+                            onDrop={handleDrop}
+                            onClick={() => fileInputRef.current?.click()}
+                            className={`border border-dashed rounded p-4 text-center cursor-pointer transition-all ${
+                              dragActive
+                                ? "border-blue-500 bg-blue-500/5"
+                                : "border-[#3d3d3d] hover:border-[#5a5a5a] bg-[#151515]"
+                            }`}
+                          >
+                            <input
+                              type="file"
+                              ref={fileInputRef}
+                              onChange={handleFileChange}
+                              className="hidden"
+                              accept=".js,.jsx,.ts,.tsx,.py,.go,.java,.cpp,.cc,.rs,.html,.css,.txt"
+                            />
+                            <Upload className="mx-auto mb-1 text-gray-500" size={20} />
+                            <p className="text-xs text-gray-300">
+                              Drag & drop source code, or <span className="text-blue-400 underline">browse computer</span>
+                            </p>
+                          </div>
+
+                          {/* Trigger Multi-Agent Pipeline */}
+                          <div className="mt-5 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={runAnalysis}
+                              disabled={!code.trim()}
+                              className={`flex items-center gap-1.5 py-2 px-5 rounded text-xs font-semibold tracking-wide transition-all ${
+                                code.trim()
+                                  ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                                  : "bg-gray-800 text-gray-500 cursor-not-allowed border border-transparent"
+                              }`}
+                            >
+                              <Play size={12} fill="currentColor" />
+                              <span>Run Sequential Pipeline</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                     </div>
 
